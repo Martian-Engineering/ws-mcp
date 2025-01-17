@@ -273,8 +273,8 @@ class McpServer:
 
 
 class McpWebSocketBridge:
-    def __init__(self, servers: List[Tuple[str, str]], port: int = 3000, env: Optional[Dict[str, str]] = None):
-        self.servers: List[McpServer] = [McpServer(name, cmd, env) for name, cmd in servers]
+    def __init__(self, servers: List[Tuple[str, str, Dict[str, str]]], port: int = 3000, env: Optional[Dict[str, str]] = None):
+        self.servers: List[McpServer] = [McpServer(name, cmd, {**env, **env_override} if env else env_override) for name, cmd, env_override in servers]
         self.port = port
         self.websocket: Optional[WebSocketServerProtocol] = None
         self.tool_to_server: Dict[str, McpServer] = {}  # Maps tool names to servers
@@ -531,6 +531,16 @@ MCP_CONFIG_SCHEMA = {
                             "items": {
                                 "type": "string"
                             }
+                        },
+                        "env": {
+                            "type": "object",
+                            "patternProperties": {
+                                "^[A-Za-z_][A-Za-z0-9_]*$": {  # env var name pattern
+                                "type": "string"
+                                }
+                            },
+                            "additionalProperties": False,
+                            "minProperties": 1
                         }
                     },
                     "additionalProperties": False
@@ -539,10 +549,10 @@ MCP_CONFIG_SCHEMA = {
             "additionalProperties": False
         }
     },
-    "additionalProperties": False
+    "additionalProperties": True
 }
 
-def parse_config(config_str: str) -> List[Tuple[str, str]]:
+def parse_config(config_str: str) -> List[Tuple[str, str, Dict[str, str]]]:
     config = json.loads(config_str)
 
     # Validate configuration against schema
@@ -553,11 +563,14 @@ def parse_config(config_str: str) -> List[Tuple[str, str]]:
         cmd = [server_config["command"]]
         if "args" in server_config:
             cmd.extend(server_config["args"])
-        server_configs.append((server_name, shlex.join(cmd)))
+        env = {}
+        if "env" in server_config:
+            env.update(server_config["env"])
+        server_configs.append((server_name, shlex.join(cmd), env))
 
     return server_configs
 
-def parse_config_file(config_path: Path) -> List[Tuple[str, str]]:
+def parse_config_file(config_path: Path) -> List[Tuple[str, str, Dict[str, str]]]:
     """Parse the MCP server configuration file.
 
     Args:
